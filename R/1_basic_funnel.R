@@ -25,13 +25,13 @@ mod_funnel_out$init_model_methods(hessian = TRUE)
 
 calculate_hessian <- function(y, x) {
   hessian_matrix <- 
-    matrix(c((x^2 * exp(-y)) / 2 - 1/9,  x * exp(-y), 
+    matrix(c((-(x^2 * exp(-y)) / 2) - 1/9,  x * exp(-y), 
               x * exp(-y)             , -1 / exp(y)), 
             nrow = 2, byrow = TRUE)
   return(hessian_matrix)
 }
 
-calculate_hessian(0.5, 1.2)
+calculate_hessian(4, 200)
 mod_funnel_out$hessian(c(0.5, 1.2))
 
 # calculate the condition number
@@ -44,6 +44,7 @@ mod_funnel_repar_out <- mod_funnel_repar$sample(parallel_chains = 4)
 
 mod_funnel_repar_out$init_model_methods(hessian = TRUE)
 mod_funnel_repar_out$hessian(c(0.5, 1.2))
+mod_funnel_out$hessian(c(0.5, 1.2))
 
 np_funnel_repar <- nuts_params(mod_funnel_repar_out)
 funnel_repar_draws <- mod_funnel_repar_out$draws(c("phi_raw", "tau_raw"), format = "array") |>
