@@ -80,10 +80,12 @@ stan_data_fun <- \(x) {
       )
 }
 
+stan_data <- stan_data_fun(meta_dat)
+
 meta_dat <- meta_dat |>
   mutate(subject_id = stan_data$subject_idx)
 
-stan_data <- stan_data_fun(meta_dat)
+# stan_data <- stan_data_fun(meta_dat)
 
 ####################################################################################
 ####################################################################################
@@ -168,11 +170,11 @@ mod_three_level_ncp_reg_out <- mod_three_level_ncp_reg$sample(
   seed = 1231290
 )
 
-mod_three_level_ncp_reg$summary(c("intercept_sigma_study","beta_sigma",
+mod_three_level_ncp_reg_out$summary(c("intercept_sigma_study","beta_sigma",
                                   "sigma_subject", 
                                  "intercept", "beta_mu"))
 
-mod_three_level_ncp_reg$summary("mu_subject")
+mod_three_level_ncp_reg_out$summary("mu_subject")
 
 mod_three_level_ncp_reg$summary(c("mu_est",
                                    "intercept_est", 

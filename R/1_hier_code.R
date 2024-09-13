@@ -42,7 +42,7 @@ mod_normal_hier_cp <- mod_hier_cp$sample(
 )
 
 np_cp <- nuts_params(mod_normal_hier_cp)
-cp_draws <- mod_normal_hier_ncp$draws(c("theta", "tau"), format = "array") 
+cp_draws <- mod_normal_hier_cp$draws(c("theta", "tau"), format = "array") 
 
 ## fit model non-centered
 mod_hier_ncp <- cmdstan_model("./stan/hierarchical_ncp.stan")
@@ -84,7 +84,7 @@ mod_normal_hier_pcp <- mod_hier_pcp$sample(
     w = as.vector(w)
   ),
   seed = 12312312,
- iter_sampling = 5000,
+ #iter_sampling = 5000,
   parallel_chains = 4
 )
 
@@ -112,20 +112,20 @@ data$cp_idx <- array(cp_idx)
 mod_normal_hier_mixed  <- mod_hier_mixed $sample(
   data = data,
   seed = 12312312,
-  iter_sampling = 5000,
+ # iter_sampling = 5000,
   parallel_chains = 4
 )
 
 
 ## inspect diagnostics
-
+mod_normal_hier_cp$sampler_diagnostics()
 table(mod_normal_hier_cp$sampler_diagnostics()[,,6])
 table(mod_normal_hier_cp$sampler_diagnostics()[,,5])
 
 table(mod_normal_hier_ncp$sampler_diagnostics()[,,6])
 table(mod_normal_hier_ncp$sampler_diagnostics()[,,5])
 
-table(mod_normal_hier_mixed $sampler_diagnostics()[,,6])
+table(mod_normal_hier_mixed$sampler_diagnostics()[,,6])
 table(mod_normal_hier_mixed $sampler_diagnostics()[,,5])
 
 table(mod_normal_hier_pcp$sampler_diagnostics()[,,6])
