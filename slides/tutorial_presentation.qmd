@@ -177,7 +177,7 @@ $$
 :::
 
 ::: {.column style="width: 60%;"}
-``` {.stan code-line-numbers="false" include="./stan/partial_pooling_binom.stan"}
+``` {.stan code-line-numbers="false" include="../stan/partial_pooling_binom.stan"}
 ```
 :::
 :::
@@ -209,7 +209,7 @@ where $z \sim \mathcal{N}(0, 1)$
 :::
 
 ::: {.column style="width: 60%;"}
-``` {.stan code-line-numbers="false" include="./stan/partial_pooling_binom.stan"}
+``` {.stan code-line-numbers="false" include="../stan/partial_pooling_binom.stan"}
 ```
 :::
 :::
