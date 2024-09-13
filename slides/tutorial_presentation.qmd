@@ -1,0 +1,748 @@
+---
+title: "Hierarchical Models"
+subtitle: "StanCon 2024 Tutorial"
+format: clean-revealjs
+filters:
+  - naquiz
+  - include-code-files
+# html-math-method:
+#   method: mathjax
+#   url: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+html-math-method: katex
+author:
+ - name: "Sean Pinkney"
+   email: sean.pinkney@gmail.com
+   affiliations: 
+    - name: Managing Director at Omnicom Media Group
+    - name: Stan Developer
+highlight-style: "nord"
+bibliography: refs.bib
+---
+
+```{r, include=FALSE, cache=FALSE}
+cmdstanr::register_knitr_engine(override = TRUE)
+options(mc.cores = parallel::detectCores())
+
+Sys.setenv(LIBGS ="/opt/homebrew/Cellar/ghostscript/10.03.1/lib/libgs.dylib")
+```
+
+## Preliminary Info
+
+-   Basic familiarity with Stan and Stan should be setup on your machine
+-   Although the examples will be in R/cmdstanr you can use the language/platform you are most comfortable with
+-   `r fontawesome::fa("github", "black")` `r fontawesome::fa("link", "black")` [Hierarchical Models in Stan](https://github.com/spinkney/Hierarchical-Models-in-Stan){.uri}
+
+## Agenda
+
+::: columns
+::: {.column width="70%"}
+-   Background on hierarchical models
+-   Partial pooling and reparameterizations
+-   Normal hierarchical models
+    -   Example: Meta-analysis
+    -   Group Exercise: Fitting a meta-analysis
+-   Break
+-   Non-normal hierarchical models
+    -   Example: Advertising effectiveness
+    -   Group Exercise: Fitting a hierarchical copula
+:::
+
+::: {.column width="30%"}
+<p style="margin-top: -1em;">
+
+`5 min`
+
+</p>
+
+<p style="margin-top: -.8em;">
+
+`45 min`
+
+</p>
+
+<p style="margin-top: -.8em;">
+
+`60 min`
+
+</p>
+
+<p style="margin-top: 3.6em;">
+
+`10 min`
+
+</p>
+
+<p style="margin-top: -.8em;">
+
+`60 min`
+
+</p>
+:::
+:::
+
+## Background on hierarchical models
+
+-   The hierarchy part comes from a dependence of a parameter on another parameter
+
+-   Uses Bayes theorem (repeatedly) $$
+    \underbrace{p(\theta, \phi \mid y)}_\text{Posterior} \propto \underbrace{p(y \mid \theta, \phi)}_\text{Likelihood} \; \underbrace{ p(\theta, \phi)}_\text{Prior} = \underbrace{p(y \mid \theta, \phi)}_\text{Likelihood} \; \underbrace{p(\theta \mid \phi) \; p(\phi)}_{\theta \text{ given } \phi}  
+    $$
+
+-   Other common terms for these models are multilevel, mixed effects, and see the [Gelman blog on other common names](https://statmodeling.stat.columbia.edu/2019/09/18/all-the-names-for-hierarchical-and-multilevel-modeling/){.url}.
+
+## Background on hierarchical models
+
+::: columns
+::: {.column style="width: 50%;"}
+```{r, engine = 'tikz', fig.ext = "svg"}
+\usetikzlibrary{arrows, shapes, positioning, fit, calc}
+
+\definecolor{black}{HTML}{000000}
+\definecolor{orange}{HTML}{E69F00}
+\definecolor{skyblue}{HTML}{56B4E9}
+\definecolor{green}{HTML}{009E73}
+\definecolor{yellow}{HTML}{F0E442}
+\definecolor{blue}{HTML}{0072B2}
+\definecolor{red}{HTML}{D55E00}
+\definecolor{pink}{HTML}{CC79A7}
+\definecolor{grey}{HTML}{999999}
+
+\definecolor{darkblue}{RGB}{33, 64, 154}
+\definecolor{midblue}{RGB}{66, 110, 190}
+\definecolor{lightblue}{RGB}{144, 185, 255}
+
+\begin{tikzpicture}[
+    node distance=1.5cm and 1.5cm,
+    every node/.style={rectangle, draw=darkblue, text=black, rounded corners, minimum size=1.2cm},
+    every path/.style={<->, thick, >=stealth, color=darkblue}]
+
+\node (phi) {$\Phi$};
+\node[below left=of phi] (theta1) {$\theta_1$};
+\node (theta2) [below=of phi] {$\theta_n$};
+\node (theta3) [below right=of phi] {$\theta_N$};
+\node (y1) [below=of theta1] {$y_1$};
+\node (y2) [below=of theta2] {$y_n$};
+\node (y3) [below=of theta3] {$y_N$};
+
+\draw (phi) -- (theta1);
+\draw (phi) -- (theta2);
+\draw (phi) -- (theta3);
+\draw (theta1) -- (y1);
+\draw (theta2) -- (y2);
+\draw (theta3) -- (y3);
+
+\path (theta1) -- (theta2) node[midway, sloped] {$\dots$};
+\path (theta2) -- (theta3) node[midway, sloped] {$\dots$};
+\path (y1) -- (y2) node[midway, sloped] {$\dots$};
+\path (y2) -- (y3) node[midway, sloped] {$\dots$};
+
+\end{tikzpicture}
+```
+:::
+
+::: {.column style="width: 50%; font-size: 75%;"}
+Sharing of information happens
+
+-   Globally
+-   Bi-directionally
+-   AKA [partial pooling]{.emphasis}
+
+When the evidence or data for a parameter are
+
+-   low
+    -   estimate is closer to prior
+-   large
+    -   data swamps prior
+    -   prior pull is weak
+
+::: callout-tip
+## Question
+
+Can you think of any issues with this type of model?
+:::
+:::
+:::
+
+## Partial pooling
+
+::: columns
+::: {.column style="width: 40%;"}
+`N` groups that we want to estimate separate `alpha`'s
+
+The key insight is to have each `alpha` share a common ancestor
+
+$$
+\alpha_n \sim \mathcal{N}(\mu, \sigma)
+$$
+:::
+
+::: {.column style="width: 60%;"}
+``` {.stan code-line-numbers="false" include="./stan/partial_pooling_binom.stan"}
+```
+:::
+:::
+
+## Partial pooling
+
+::: columns
+::: {.column style="width: 40%; font-size: 80%;"}
+The intention is to have `alpha` as
+
+$$
+\alpha \sim \mathcal{N}(\mu, \sigma)
+$$
+
+but it is coded in a peculiar way...
+
+::: fragment
+[non-centered parameterization]{.emphasis2}
+:::
+
+::: fragment
+represent $\alpha$ as 
+$$
+\alpha = \mu + \sigma z
+$$ 
+
+where $z \sim \mathcal{N}(0, 1)$
+:::
+:::
+
+::: {.column style="width: 60%;"}
+``` {.stan code-line-numbers="false" include="./stan/partial_pooling_binom.stan"}
+```
+:::
+:::
+
+## On Parameterizations
+
+::: columns 
+::: {.column style="width: 50%; font-size: 70%;"}
+[Centered]{.emphasis2} and [non-centered]{.emphasis2} parameterizations are mathematically equivalent.
+
+What is not equivalent is the ability of the estimation algorithm (i.e. HMC sampler) to explore the geometry of given model.
+
+Stan uses a step-based gradient approximation to the posterior and a fixed step size. The expectation of the sampler is that it can move from a given point using the gradient information and the (adapted from warmup) step size. 
+
+When the curvature of the log density changes rapidly the approximation diverges - called a [divergence]{.emphasis} - too far and this hinders the ability of the sampler to accurately measure the posterior.
+
+:::
+::: {.column style="width: 50%;"}
+![](log_density_plot.png){style="margin-top: -30px;"}
+:::
+:::
+
+## Quick Math Stop
+
+::: {.columns style='display: flex !important;'}
+::: {.column style="width: 50%; font-size: 50%;"}
+::: reduce-math-space
+The model to the right is expressed as
+```{=tex}
+\begin{aligned}
+p(\tau) &= \frac{1}{\sqrt{2\pi \cdot 3^2}} \exp\left(-\frac{\tau^2}{2 \cdot 3^2}\right) \\
+p(\phi \mid \tau) &= \frac{1}{\sqrt{2\pi \cdot \exp(\tau/2)^2}} \exp\left(-\frac{\phi^2}{2 \cdot \exp(\tau/2)^2}\right) 
+\end{aligned}
+```
+The joint log posterior is
+```{=tex}
+\begin{aligned}
+p(\tau, \phi) &= p(\tau) \cdot p(\phi \mid \tau) \\
+\log p(\tau, \phi) &= \log p(\tau) + \log p(\phi \mid \tau) \\
+ &= -\frac{\tau}{2} - \frac{\phi^2}{2 \exp(\tau/2)^2} - \frac{\tau^2}{18} + C
+\end{aligned}
+```
+The Hessian[^1] (a matrix of 2nd partial derivatives) is a 2nd order approximation to the curvature of the posterior
+
+$$
+\begin{bmatrix} 
+-\dfrac{x^2 \exp(-y)}{2} - \dfrac{1}{9} & x \exp(-y) \\ 
+x \exp(-y) & -\dfrac{1}{\exp(y)} 
+\end{bmatrix}
+$$
+
+The ratio of the largest to the smallest eigenvalues of H is a gauge of posterior difficulty 
+:::
+:::
+
+::: {.column style='display: flex; justify-content: center; align-items: center; margin-top: -125px;'}
+
+
+```{.stan code-line-numbers="false"}
+// 1_basic_funnel.stan
+parameters {
+  real tau;
+  real phi;
+}
+model {
+  tau ~ normal(0, 3);
+  phi ~ normal(0, exp(tau * 0.5));
+}
+```
+
+:::
+:::
+
+[^1]: Approximated by the Hessian matrix. There's a handout from BYU mathematics professor Brown with more information [-@hessian:2014].
+
+## Code Time
+
+We will walk through the basic funnel code 
+
+Files we will use
+```{.bash code-line-numbers="false"}
+R
+   |-- 1_basic_funnel.R
+stan
+   |-- basic_funnel.stan
+   |-- basic_funnel_repar.stan
+```
+
+## Normal Parameterization Choices 
+
+```{=html}
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.15.1/dist/katex.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.15.1/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.15.1/dist/contrib/auto-render.min.js"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    renderMathInElement(document.body, {
+      delimiters: [
+        {left: "$$", right: "$$", display: true},
+        {left: "\\[", right: "\\]", display: true},
+        {left: "$", right: "$", display: false},
+        {left: "\\(", right: "\\)", display: false}
+      ]
+    });
+  });
+</script>
+
+<table style="width:100%; border-collapse: separate;  border: none; border-spacing: 20px 0;">
+  <!-- row 1 -->
+  <tr style="border: none;">
+    <td style="border: none; font-size: 110%; font-weight: bold; vertical-align: middle;">Centered</td>
+    <td style="border: none; vertical-align: middle; text-align: center; font-size: 90%;">$\alpha_i \sim \mathcal{N}(\mu, \sigma) \; \text{ for } i \in {1,\ldots, I}$</td>
+    <td style="border: none; vertical-align: middle;font-size: 90%;">$\alpha_i$ are parameterized directly by the parent distribution</td>
+  </tr>
+ <!--  <tr style="border: none;"><td colspan="3" style="border: none;">&nbsp;</td></tr> <!-- Empty space between sections -->
+  
+  <!-- row 2 -->
+  <tr style="border: none;">
+    <td style="border: none; font-size: 110%; font-weight: bold; vertical-align: middle;">Non-centered</td>
+    <td style="border: none; vertical-align: middle;font-size: 90%; text-align: center;">
+$$
+\begin{aligned}
+z_i &\sim \mathcal{N}(0, 1) \\
+\alpha_i &\overset{\text{set}}{=} \mu + z_i \sigma
+\end{aligned}
+$$</td>
+    <td style="border: none; vertical-align: middle;font-size: 90%;">$\alpha_i$ are reparameterized by a linear transformation because normal distributions are closed under this transformation</td>
+  </tr>
+ 
+<!--   <tr style="border: none;"><td colspan="3" style="border: none;">&nbsp;</td></tr> <!-- Empty space between sections -->
+
+  <!-- row 3 -->
+ <tr style="border: none;">
+    <td style="border: none; font-size: 110%; font-weight: bold; vertical-align: middle;">Mix-Centered</td>
+    <td style="border: none; vertical-align: middle; font-size: 90%; text-align: center;">
+    $$\begin{aligned}
+z_c \sim \mathcal{N}(0, 1) &\; \text{ for } c \in {1,\ldots, c} \\
+\alpha_n \sim \mathcal{N}(\mu, \sigma) &\; \text{ for }  n \in {c + 1, \ldots, I} \\
+\alpha_c &\overset{\text{set}}{=} \mu + z_c \sigma 
+\end{aligned}$$</td>
+    <td style="border: none; vertical-align: middle;font-size: 90%;">$\alpha_c$ are given centered parameterizations <br>
+$\alpha_n$ are given non-centered parameterizations</td>
+  </tr>
+ <!--    <tr style="border: none;"><td colspan="3" style="border: none;">&nbsp;</td></tr> <!-- Empty space between sections -->
+    <!-- row 4 -->
+    <tr style="border: none;">
+    <td style="border: none; font-size: 110%; font-weight: bold; vertical-align: middle;">Partially centered</td>
+    <td style="border: none; vertical-align: middle; font-size: 90%; text-align: center;">
+    $$
+    \begin{aligned}
+ \chi_i &\sim \mathcal{N}(\mu (1 - w_i), \; \sigma (1 - w_i) + w_i) \\
+ \alpha_i &\overset{\text{set}}{=}\dfrac{(\mu  w_i + \chi_i \sigma)}{\sigma (1 - w) + w_i} \\
+    \end{aligned}
+    $$</td>
+    <td style="border: none; vertical-align: middle; font-size: 90%;">Given $\chi$ and a weight $\small{w \in \{x \in \mathbb{R} \mid 0 \leq x \leq 1\}}$ then $\frac{(\mu  w_i + \chi_i \sigma)}{\sigma (1 - w) + w_i} \sim  \small{\mathcal{N}(\theta, \sigma)}$ </td>
+  </tr>
+</table>
+```
+
+## More on partially centered
+
+When $w_i$ is...
+
+::: {layout="[[30, 30, 30, 10], [100]]" style="font-size: 70%;" .reduce-math-space}
+::: {#first-column}
+$$
+\begin{aligned}
+& w_i = 0 \\ 
+&  \underbrace{\alpha_i = \chi_i}_{\text{\color{#21409A}centered}}
+\end{aligned}
+$$
+:::
+
+::: {#second-column}
+$$
+\begin{aligned}
+& w_i = 1 \\
+&  \underbrace{\alpha_i = \mu + \chi_i \sigma}_{\text{\color{#21409A}non-centered}}
+\end{aligned}
+$$ 
+:::
+
+::: {#third-column}
+$$
+\begin{aligned} 
+& 0 < w_i < 1 \\
+& \underbrace{\alpha_i = \frac{(\mu  w_i + \chi_i \sigma)}{\sigma (1 - w) + w_i}}_{\text{\color{#21409A}partially non-centered}} 
+\end{aligned}
+$$
+:::
+
+::: {#fourth-column}
+$$
+\begin{aligned} 
+& \phantom{0 < w_i < 1} \\
+& \phantom{\alpha_i = \frac{(\mu  w_i + \chi_i \sigma)}{\sigma (1 - w) + w_i}} 
+\end{aligned}
+$$
+:::
+$\implies \alpha_i \sim \mathcal{N}(\mu,\; \sigma)$
+
+:::{#bottom-row}
+Proof
+$$
+\begin{alignat*}{2}
+& \chi_i &                \sim & \quad \mathcal{N}[\mu (1 - w_i),\; \sigma (1 - w_i) + w_i] \\[6pt] 
+& \chi_i \sigma &         \sim & \quad \mathcal{N}[\sigma \mu (1 - w_i),\; \sigma (\sigma (1 - w_i) + w_i)] \\[6pt]
+& \mu w_i + \chi_i \sigma & \sim & \quad \mathcal{N}[\sigma \mu (1 - w_i) + \mu w_i,\; \sigma (\sigma (1 - w_i) + w_i)] \\[6pt]
+& \frac{\mu w_i + \chi_i \sigma}{\sigma (1 - w_i) + w_i} & \quad \sim & \quad \mathcal{N}\left[\mu \frac{\sigma (1 - w_i) + w_i}{\sigma (1 - w_i) + w_i},\; \sigma \frac{\sigma (1 - w_i) + w_i}{\sigma (1 - w_i) + w_i} \right] \quad \blacksquare 
+\end{alignat*}
+$$
+:::
+
+:::
+
+## Centered, Non-centered, Mixed centered, or Partially centered?
+
+Rule of thumb
+
+-   Centered when there is enough data for your group
+-   Non-centered when data is low
+-   Mixed centered when you have both cases
+-   Partially centered when you have both cases
+
+:::{.callout-note}
+The only reference to partially centered parameterizations I found was in Papaspiliopoulos and Roberts [-@papaspiliopoulos:2003] but it seems they only put the weight on $\mu$ and don't derive the implied distribution we need for our Stan model.
+:::
+
+## Code Time
+
+We'll recreate Michael Betancourt's [Hierarchcial Modeling](https://betanalpha.github.io/assets/case_studies/hierarchical_modeling.html) case study and add the partially centered parameterization
+
+``` {.r code-line-numbers="false"}
+K <- 9
+N_per_indiv <- c(10, 5, 1000, 10, 1, 5, 100, 10, 5)
+indiv_idx <- rep(1:K, N_per_indiv)
+N <- length(indiv_idx)
+sigma <- 10
+```
+
+Files
+```{.bash code-line-numbers="false"}
+R
+   |-- 1_hier_code.R
+stan
+   |-- hierarchical_cp.stan
+   |-- hierarchical_ncp.stan
+   |-- hierarchical_mixed.stan
+   |-- hierarchical_pcp.stan
+   |-- hierarchical_sim.stan
+```
+
+## More on Normal Hierarchical Models
+
+2-level, varying slopes, varying intercept model
+
+$i$ units and $j$ groups 
+
+$$
+y_{ij} = \underbrace{\alpha + a_j}_\text{varying intercept} + \underbrace{X (\beta + b_j)}_\text{varying slope} + \epsilon_{ij} 
+$$
+
+The expectation of this
+
+$$
+E(y_{ij} \mid X, j) = \alpha + a_j + X (\beta + \beta_j)
+$$
+
+But 
+
+$$
+E(y_{ij} \mid X) = \alpha + X \beta
+$$
+
+## More on Normal Hierarchical Models
+
+The difference between 
+
+[Bayesian]{.emphasis2}
+$$
+E(y_{ij} \mid X, j) = \alpha + X \beta + \underbrace{a_j + \beta_j}_\text{parameters}
+$$
+
+and
+
+[Frequentist]{.emphasis}
+$$
+E(y_{ij} \mid X) = \alpha + X \beta
+$$
+
+## Code Time
+
+::: columns
+::: {.column style="width: 30%;"}
+Files
+```{.bash code-line-numbers="false"}
+R
+   |-- 2_hier_code.R
+stan
+   |-- 2_meta_two_level_cp.stan
+   |-- 2_meta_two_level_ncp_reg.stan
+   |-- 2_meta_three_level_ncp_reg.stan
+data
+   |-- meta_data.csv
+```
+:::
+
+::: {.column style="width: 70%;"}
+![](meta.png){style="margin-left: 100px;"}
+:::
+:::
+
+## Break
+
+10 mins
+
+## Other Hierarchical Models
+
+It's really not that different. 
+
+-   Re-parameterizations require more care (not unique to hierarchical models)
+-   Exponential families (i.e. GLMs) are more-or-less straightforward 
+-   With many modern Bayesian methods you're not limited to normality or conjugacy or exponential families 
+
+## Discussion and example
+
+You are a large advertising agency and a new client, PB&J Inc., comes to you to purchase advertising on websites for their new product.
+
+You have data on:
+
+-   10 different industries
+-   100 different websites for 500 campaigns and 30 clients
+-   5 site categories News, Shopping, Sports, Interests, Business
+-   Avg. seconds of attention on the ad at each website for each ad campaign
+-   Avg. cost of ad on each site
+
+## Generative Model
+
+::: columns
+::: {.column style="width: 40%; font-size: 50%;"}
+Hyperpriors
+
+::: reduce-math-space
+```{=tex}
+\begin{aligned}
+\mu^{h_c}, \; \mu^{h_i} &\overset{\text{set}}{=} 0 \\
+L_c, \; L_i &\sim \text{LKJ(4)} \\
+\sigma &\sim \text{Exp}(1)
+\end{aligned}
+```
+Category and Industry Parameters
+
+```{=tex}
+\begin{aligned}
+\mu_c &\sim \mathcal{N}(\mu^{h_c}, L_c) \\
+\mu_i &\sim \mathcal{N}(\mu^{h_i}, L_i) 
+\end{aligned}
+```
+Interactive effects of ad-cost by category and industry
+
+```{=tex}
+\begin{aligned}
+\alpha_c, \; \alpha_i &\sim \mathcal{N}(0, 1) \\
+\gamma_{c_i} &\sim \mathcal{N}(0, 1) \\
+\text{ where } \\
+\beta_{w, n} &= \alpha_c X_{w, n} \alpha_i
+\end{aligned}
+```
+Website level effect
+
+```{=tex}
+\begin{aligned}
+\mu_w \sim \mathcal{N}(\mu_{c,w}, 1)
+\end{aligned}
+```
+Outcome model
+
+```{=tex}
+\begin{aligned}
+\log(y_{w, n}) \sim \mathcal{N}(\mu_{w} + \mu_{i} + \gamma_{c, i} + \beta_{w, n}, \sigma)
+\end{aligned}
+```
+:::
+:::
+
+::: {.column width="60%"}
+```{r, engine = 'tikz', fig.ext = "svg"}
+#| echo: false
+#| fig-align: right
+#| format: svg
+#| out-width: 90%
+
+\usetikzlibrary{arrows, shapes, positioning, fit, calc}
+
+\begin{tikzpicture}[node distance=2.5cm, >=stealth, thick]
+    % Define colors
+    \definecolor{darkblue}{RGB}{33, 64, 154}
+    \definecolor{midblue}{RGB}{66, 110, 190}
+    \definecolor{lightblue}{RGB}{144, 185, 255}
+
+    % TikZ styles
+    \tikzstyle{main} = [circle, minimum size = 10mm, thick, draw = darkblue, node distance = 16mm, fill = white]
+    \tikzstyle{obs} = [circle, minimum size = 10mm, thick, draw = darkblue, node distance = 16mm, fill = midblue]
+    \tikzstyle{det} = [rectangle, minimum size = 10mm, thick, draw = darkblue, node distance = 16mm, fill = midblue, rounded corners]
+    \tikzstyle{hyparam} = [rectangle, minimum size = 5mm, thick, draw = lightblue, fill = lightblue!10, node distance = 16mm]
+    \tikzstyle{connect} = [-latex, thick, darkblue]
+    \tikzstyle{plate} = [draw=darkblue, thick, inner sep=5mm, rectangle, rounded corners]
+    \tikzstyle{dist} = [above left, align=right, font=\footnotesize]
+
+    % Nodes for parameters
+    \node[hyparam] (Sigma_c) {$L_c$};
+    \node[hyparam, left=of Sigma_c] (mu_c_h) {$\mu^{h_c}$};
+    \node[hyparam, right=of Sigma_c, xshift=2cm] (mu_i_h) {$\mu^{h_i}$};
+    \node[hyparam, right=of mu_i_h] (Sigma_i) {$L_i$};
+
+    \node[main, below left=of Sigma_c, yshift=-2cm] (mu_c) {$\mu_c$};
+    \node[main, right=of mu_c, xshift=-0.5cm] (alpha_c) {$\alpha_c$};
+
+    \node[main, below right=of mu_i_h)] (mu_i) {$\mu_i$};
+    \node[main, right=of alpha_c, xshift=1.7cm] (alpha_i) {$\alpha_i$};
+    \node[main, below=of mu_c, yshift=-1cm, xshift=2cm] (mu_w) {$\mu_w$};
+    \node[main, right=of mu_w] (gamma_ci) {$\gamma_{c, i}$};
+
+    \node[obs, below=of mu_w] (X) {$X_w$};
+    \node[obs, right=of X] (y) {$y$};
+    \node[hyparam, right=of y] (sigma) {$\sigma$};
+
+    % Distributions
+
+    % Edges
+    \path (alpha_c) edge [connect] (y)
+          (alpha_i) edge [connect] (y)
+          (mu_w) edge [connect] (y)
+          (mu_i_h) edge [connect] (mu_i)
+          (mu_c_h) edge [connect] (mu_c)
+          (mu_i) edge [connect] (y)
+          (X) edge [connect] (y)
+          (gamma_ci) edge [connect] (y)
+          (Sigma_i) edge [connect] (mu_i)
+          (mu_c) edge [connect] (mu_w)
+          (Sigma_c) edge [connect] (mu_c)
+          (sigma) edge [connect] (y);
+
+    % Plates with distinguishable labels and positions
+    \node[plate, fit=(mu_i)(gamma_ci)(alpha_i)] (plateI) {};
+    \node[plate, fit=(mu_c)(gamma_ci)(alpha_c)] (plateC) {};
+    \node[plate, fit=(mu_w)(X)] (plateW) {};
+
+    % Plate labels
+    \node at (plateI.north east)[anchor=south east] {$I$};
+    \node at (plateC.north east)[anchor=south east] {$C$};
+    \node at (plateW.north east)[anchor=south east] {$W$};
+    
+\end{tikzpicture}
+```
+:::
+:::
+
+## Stan Code
+
+``` stan
+data {
+  int I, C, P, N, W;
+  vector[N, W] X; 
+  matrix[N, W] log_Y;
+  array<lower=1, upper=C>[W] int index_c;
+  array<lower=1, upper=I>[N] int index_i;
+  int<lower=0> sim_ind;
+}
+parameters {
+  real intercept;
+  real<lower=0> sigma;
+  
+  vector[C] alpha_c;
+  row_vector[I] alpha_i;
+  matrix[C, I] gamma;
+
+  vector[C] z_c;
+  vector[I] z_i;
+  vector[W] z_w;
+  
+  cholesky_factor_corr[C] L_c;
+  cholesky_factor_corr[I] L_i;
+}
+transformed parameters {
+  vector[C] mu_c = L_c * z_c;
+  vector[I] mu_i = L_i * z_i;
+  vector[W] mu_w = mu_c[index_c] + z_w;
+  matrix[N, W] beta = (X * alpha_c[index_c]) * alpha_i[index_i];
+}
+model {
+  z_c ~ std_normal();
+  z_i ~ std_normal();
+  z_w ~ std_normal();
+  alpha_c ~ std_normal();
+  alpha_i ~ std_normal();
+  to_vector(gamma) ~ std_normal();
+  L_c ~ lkj_corr_cholesky(4);
+  L_i ~ lkj_corr_cholesky(4);
+  
+  intercept ~ normal(0, 3);
+  sigma ~ exponential(1);
+
+  if (sim_ind == 0) {
+    for (n in 1:n)
+      log_Y[n] ~ normal(intercept + mu_w + mu_i[index_i[n]] + beta[n], sigma); 
+  }
+}
+generated quantities {
+  matrix[sim_ind == 1 ? N : 0, sim_ind == 1 ? W : 0] log_Y_sim;
+  
+  if (sim_ind == 1) {
+    for (n in 1:N) 
+      log_Y_sim[n] = normal_rng(intercept + mu_w + mu_c[index_c] + mu_i[index_i[n]] + beta[n], sigma);
+  }
+}
+```
+
+## Group Exercise: Fitting a hierarchical copula
+
+```{.bash code-line-numbers="false"}
+references
+   |-- hierarchical_claims_modeling.pdf
+data
+   |-- insurance_claims.csv
+```
+
+-   Primer on Copula: [Hierarchical Models in Stan](https://spinkney.github.io/helpful_stan_functions/group__copula.html){.uri}
+
+-   More on Copula Modeling in Stan: [Andrew Johnson's Intro to Copula Modeling](https://users.aalto.fi/~johnsoa2/notebooks/CopulaIntro.html){.uri}
+
+## References
+
+::: {#refs}
+:::

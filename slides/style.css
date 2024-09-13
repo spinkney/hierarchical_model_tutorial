@@ -1,0 +1,15 @@
+.two-column-list {
+  display: flex;
+  width: 100%;
+}
+.list-column {
+  width: 50%;
+  padding-right: 20px;
+}
+.content-column {
+  width: 50%;
+}
+.content-column p {
+  margin-top: 0;
+  margin-bottom: 1em;
+}
