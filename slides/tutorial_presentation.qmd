@@ -30,7 +30,7 @@ Sys.setenv(LIBGS ="/opt/homebrew/Cellar/ghostscript/10.03.1/lib/libgs.dylib")
 
 -   Basic familiarity with Stan and Stan should be setup on your machine
 -   Although the examples will be in R/cmdstanr you can use the language/platform you are most comfortable with
--   `r fontawesome::fa("github", "black")` `r fontawesome::fa("link", "black")` [Hierarchical Models in Stan](https://github.com/spinkney/Hierarchical-Models-in-Stan){.uri}
+-   `r fontawesome::fa("github", "black")` `r fontawesome::fa("link", "black")` [Hierarchical Models in Stan](https://github.com/spinkney/hierarchical_model_tutorial){.uri}
 
 ## Agenda
 
